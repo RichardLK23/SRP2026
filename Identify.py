@@ -228,7 +228,8 @@ def ensure_clockwise_order(vertices):
     return vertices
 
 def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices=50, 
-                   auto_remove_border=True, merge_collinear=True, collinear_threshold=5.0):
+                   auto_remove_border=True, merge_collinear=True, collinear_threshold=5.0,
+                   visualize=True):
     """
     Detect white polygons on black background, auto-remove white border, 
     return vertex coordinates in edge order and visualize results
@@ -241,6 +242,7 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
         auto_remove_border: Whether to auto-remove white border
         merge_collinear: Whether to merge collinear points on straight edges
         collinear_threshold: Distance threshold for collinearity detection (pixels)
+        visualize: Whether to display visualization (default: True)
     
     Returns:
         polygons: List of polygons, each is a list of vertices in edge order
@@ -264,7 +266,8 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
     border_info = None
     if auto_remove_border:
         gray, border_info = remove_border(gray)
-        print(f"Detected and removed white border: top={border_info['top']}, bottom={border_info['bottom']}, left={border_info['left']}, right={border_info['right']}")
+        if visualize:
+            print(f"Detected and removed white border: top={border_info['top']}, bottom={border_info['bottom']}, left={border_info['left']}, right={border_info['right']}")
     
     # Gaussian blur to reduce noise (but preserve edges)
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
@@ -325,7 +328,8 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
                 is_border = True
         
         if is_border:
-            print(f"Skipping possible border contour, area: {area:.0f}")
+            if visualize:
+                print(f"Skipping possible border contour, area: {area:.0f}")
             continue
         
         # Polygon approximation using epsilon_factor
@@ -381,7 +385,7 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
                 vertices = approx.reshape(-1, 2).tolist()
             else:
                 reduced_count = original_count - len(vertices)
-                if reduced_count > 0:
+                if reduced_count > 0 and visualize:
                     print(f"  Polygon {polygon_counter + 1}: merged {reduced_count} collinear points ({original_count} -> {len(vertices)} vertices)")
         
         # Adjust coordinates back to original image position if border was removed
@@ -401,8 +405,12 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
         # Increment the counter for valid polygons
         polygon_counter += 1
     
-    # Display results
-    visualize_results(original_gray, gray, binary, vis_img, polygons, border_info)
+    # Display results only if visualize is True
+    if visualize:
+        visualize_results(original_gray, gray, binary, vis_img, polygons, border_info)
+    else:
+        # Print polygon information without visualization
+        print_results(polygons)
     
     return polygons
 
@@ -591,7 +599,7 @@ if __name__ == "__main__":
     print(f"  matplotlib version: {matplotlib.__version__}")
     print(f"  Font list: {plt.rcParams['font.sans-serif'][:3]}")
 
-    img_path = 'test_img/test01.png'
+    img_path = 'test_img/test02.png'
 
     # Run detection with merging
     polygons = detect_polygons(
@@ -600,5 +608,6 @@ if __name__ == "__main__":
         min_area=100, 
         auto_remove_border=True,
         merge_collinear=True,
-        collinear_threshold=5.0
+        collinear_threshold=5.0,
+        visualize=True
     )
