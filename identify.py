@@ -227,7 +227,7 @@ def ensure_clockwise_order(vertices):
     
     return vertices
 
-def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices=50, 
+def detect_polygons(gray, epsilon_factor=0.003, min_area=100, max_vertices=50, 
                    auto_remove_border=True, merge_collinear=True, collinear_threshold=5.0,
                    visualize=True):
     """
@@ -247,18 +247,6 @@ def detect_polygons(image_path, epsilon_factor=0.003, min_area=100, max_vertices
     Returns:
         polygons: List of polygons, each is a list of vertices in edge order
     """
-    
-    # Read image
-    img = cv2.imread(image_path)
-    if img is None:
-        print(f"Error: Unable to read image at {image_path}")
-        return []
-    
-    # Convert to grayscale
-    if len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = img.copy()
     
     original_gray = gray.copy()
     
@@ -599,7 +587,7 @@ if __name__ == "__main__":
     print(f"  matplotlib version: {matplotlib.__version__}")
     print(f"  Font list: {plt.rcParams['font.sans-serif'][:3]}")
 
-    img_path = 'test_img/test02.png'
+    img_path = 'test_img/001.png'
 
     # Run detection with merging
     polygons = detect_polygons(
@@ -611,3 +599,5 @@ if __name__ == "__main__":
         collinear_threshold=5.0,
         visualize=True
     )
+
+    print (f"polygons: {polygons[0]}")
