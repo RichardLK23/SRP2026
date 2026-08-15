@@ -14,7 +14,6 @@ def setup_plot_style():
     plt.rcParams['axes.unicode_minus'] = False
     plt.rcParams['font.size'] = 10
 
-
 # Initialize plot style
 setup_plot_style()
 
