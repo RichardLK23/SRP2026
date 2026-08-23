@@ -586,11 +586,32 @@ if __name__ == "__main__":
     print(f"  matplotlib version: {matplotlib.__version__}")
     print(f"  Font list: {plt.rcParams['font.sans-serif'][:3]}")
 
-    img_path = 'test_img/001.png'
+    try:
+        img_path = 'test_img/001.png'
+        img = cv2.imread(img_path)
+    except FileNotFoundError:
+        print("Error: The specified image file was not found.")
+        exit(0)
+
+    # 对黑色部分进行腐蚀
+    if len(img.shape) == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img.copy()
+
+    # 2. 取反：黑色变白色，白色变黑色
+    inverted = cv2.bitwise_not(gray)
+
+    # 3. 对取反后的图像进行腐蚀（即对原图的黑色区域进行腐蚀）
+    kernel = np.ones((7, 7), np.uint8)
+    eroded_inverted = cv2.erode(inverted, kernel, iterations=1)
+
+    # 4. 再次取反，恢复原图色彩
+    gray = cv2.bitwise_not(eroded_inverted)
 
     # Run detection with merging
     polygons = detect_polygons(
-        img_path, 
+        gray, 
         epsilon_factor=0.003, 
         min_area=100, 
         auto_remove_border=True,
