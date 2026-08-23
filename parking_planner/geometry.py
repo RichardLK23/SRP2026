@@ -56,10 +56,9 @@ def point_to_segment_distance(p: Tuple[float, float],
 def line_intersects_polygon(p1: Tuple[float, float], 
                             p2: Tuple[float, float], 
                             polygon: Polygon) -> bool:
-    """检查线段是否与多边形相交（包括内部）"""
+    """检查线段是否与多边形相交"""
     line = LineString([p1, p2])
     if line.intersects(polygon):
-        # 如果线段完全在多边形内部，也算碰撞
         return True
     return False
 
@@ -67,11 +66,8 @@ def line_intersects_polygon(p1: Tuple[float, float],
 def create_vehicle_rect(x: float, y: float, heading: float, 
                         length: float, width: float) -> Polygon:
     """创建车辆矩形"""
-    # 以车辆中心为原点
     rect = box(-length/2, -width/2, length/2, width/2)
-    # 旋转
     rect = rotate(rect, math.degrees(heading), origin=(0, 0), use_radians=False)
-    # 平移
     rect = translate(rect, x, y)
     return rect
 

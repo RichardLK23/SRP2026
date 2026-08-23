@@ -8,8 +8,21 @@ import numpy as np
 from typing import List, Tuple
 from shapely.geometry import Polygon
 
-from ..config import Config
-from .geometry import create_vehicle_rect
+from config import Config
+from geometry import create_vehicle_rect, distance
+
+# 设置中文字体
+def setup_chinese_font():
+    """设置matplotlib支持中文显示"""
+    try:
+        # Windows系统
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+        plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+    except:
+        pass
+
+# 在类加载时设置字体
+setup_chinese_font()
 
 
 class Visualizer:
@@ -20,7 +33,6 @@ class Visualizer:
         self.fig_size = config.visualization.FIGURE_SIZE
         self.save_path = config.visualization.FIGURE_SAVE_PATH
         
-        # 颜色
         self.color_obstacle = config.visualization.COLOR_OBSTACLE
         self.color_start = config.visualization.COLOR_START
         self.color_goal = config.visualization.COLOR_GOAL
@@ -28,6 +40,9 @@ class Visualizer:
         self.color_raw = config.visualization.COLOR_RAW_PATH
         self.color_smooth = config.visualization.COLOR_SMOOTH_PATH
         self.color_vehicle = config.visualization.COLOR_VEHICLE
+        
+        # 再次确保字体设置
+        setup_chinese_font()
     
     def plot_scene(self, 
                    obstacles: List[Polygon],
@@ -41,55 +56,57 @@ class Visualizer:
         ax.set_aspect('equal')
         ax.grid(True, alpha=0.3)
         
-        # 1. 绘制障碍物
-        for poly in obstacles:
-            x, y = poly.exterior.xy
-            ax.fill(x, y, color=self.color_obstacle, alpha=0.7, label='障碍物' if poly == obstacles[0] else '')
-            ax.plot(x, y, 'k-', linewidth=1)
+        # 绘制障碍物
+        for idx, poly in enumerate(obstacles):
+            try:
+                x, y = poly.exterior.xy
+                label = '障碍物' if idx == 0 else ''
+                ax.fill(x, y, color=self.color_obstacle, alpha=0.7, label=label)
+                ax.plot(x, y, 'k-', linewidth=1)
+            except Exception as e:
+                print(f"绘制障碍物警告: {e}")
+                continue
         
-        # 2. 绘制起点和终点
-        ax.plot(start[0], start[1], 'go', markersize=10, label='起点')
+        # 绘制起点和终点
+        ax.plot(start[0], start[1], 'go', markersize=12, label='起点')
         self._draw_vehicle(ax, start[0], start[1], start[2], 'green')
         
-        ax.plot(goal[0], goal[1], 'ro', markersize=10, label='目标点')
+        ax.plot(goal[0], goal[1], 'ro', markersize=12, label='目标点')
         self._draw_vehicle(ax, goal[0], goal[1], goal[2], 'red')
         
-        # 3. 绘制引导点
+        # 绘制引导点
         if guide_points:
             gx = [gp[0] for gp in guide_points]
             gy = [gp[1] for gp in guide_points]
             ax.plot(gx, gy, 'b-o', linewidth=2, markersize=8, label='引导点')
-            
-            # 绘制引导点航向
             for gp in guide_points:
                 self._draw_arrow(ax, gp[0], gp[1], gp[2], 0.3, 'blue')
         
-        # 4. 绘制粗糙路径
+        # 绘制粗糙路径
         if rough_path:
             rx = [p[0] for p in rough_path]
             ry = [p[1] for p in rough_path]
             ax.plot(rx, ry, 'orange', linewidth=2, linestyle='--', label='粗糙路径')
-            
             # 绘制路径上的车辆姿态
-            for i in range(0, len(rough_path), max(1, len(rough_path)//20)):
+            step = max(1, len(rough_path)//20)
+            for i in range(0, len(rough_path), step):
                 p = rough_path[i]
                 self._draw_vehicle(ax, p[0], p[1], p[2], 'orange', alpha=0.3)
         
-        # 5. 绘制平滑路径
+        # 绘制平滑路径
         if smooth_path:
             sx = [p[0] for p in smooth_path]
             sy = [p[1] for p in smooth_path]
             ax.plot(sx, sy, 'purple', linewidth=3, label='平滑路径')
-            
-            # 绘制路径上的车辆姿态（稀疏显示）
             step = max(1, len(smooth_path)//30)
             for i in range(0, len(smooth_path), step):
                 p = smooth_path[i]
                 self._draw_vehicle(ax, p[0], p[1], p[2], 'purple', alpha=0.2)
         
+        # 设置标签 - 使用英文避免中文显示问题
         ax.set_xlabel('X (m)')
         ax.set_ylabel('Y (m)')
-        ax.set_title('自动泊车路径规划结果')
+        ax.set_title('Automatic Parking Path Planning')
         ax.legend(loc='upper right')
         ax.axis('equal')
         
@@ -97,9 +114,12 @@ class Visualizer:
         all_x = []
         all_y = []
         for poly in obstacles:
-            bounds = poly.bounds
-            all_x.extend([bounds[0], bounds[2]])
-            all_y.extend([bounds[1], bounds[3]])
+            try:
+                bounds = poly.bounds
+                all_x.extend([bounds[0], bounds[2]])
+                all_y.extend([bounds[1], bounds[3]])
+            except:
+                pass
         
         if smooth_path:
             all_x.extend([p[0] for p in smooth_path])

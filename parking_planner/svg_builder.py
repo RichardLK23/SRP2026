@@ -5,10 +5,11 @@ import math
 import heapq
 from typing import List, Tuple, Optional, Set
 from shapely.geometry import Polygon, Point, LineString
+from shapely.ops import unary_union
 
-from ..config import Config
-from .collision_checker import CollisionChecker
-from ...utils.geometry import distance, compute_heading, normalize_angle
+from config import Config
+from collision_checker import CollisionChecker
+from geometry import distance, compute_heading, normalize_angle
 
 
 class SVGGuidePointExtractor:
@@ -16,42 +17,63 @@ class SVGGuidePointExtractor:
     
     def __init__(self, config: Config, obstacle_polys: List[Polygon]):
         self.config = config
-        self.obstacle_polys = obstacle_polys
-        self.collision_checker = CollisionChecker(obstacle_polys, config)
-        
-        # 参数
+        # 确保障碍物是有效的 Polygon 对象
+        self.obstacle_polys = self._validate_obstacles(obstacle_polys)
+        self.collision_checker = CollisionChecker(self.obstacle_polys, config)
         self.view_margin = config.svg.VIEW_WINDOW_MARGIN
         self.simplify_tolerance = config.svg.SIMPLIFY_TOLERANCE
         self.use_convex_hull = config.svg.USE_CONVEX_HULL
         self.min_edge_length = config.svg.MIN_EDGE_LENGTH
     
+    def _validate_obstacles(self, obstacle_polys: List) -> List[Polygon]:
+        """验证并转换障碍物为有效的 Polygon 对象"""
+        validated = []
+        for poly in obstacle_polys:
+            if poly is None:
+                continue
+            if isinstance(poly, Polygon):
+                if not poly.is_empty and poly.is_valid:
+                    validated.append(poly)
+                else:
+                    # 尝试修复无效多边形
+                    try:
+                        fixed = poly.buffer(0)
+                        if fixed.is_valid:
+                            validated.append(fixed)
+                    except:
+                        pass
+            elif hasattr(poly, '__iter__') and len(poly) >= 3:
+                # 坐标列表转换为 Polygon
+                try:
+                    p = Polygon(poly)
+                    if p.is_valid and not p.is_empty:
+                        validated.append(p)
+                except:
+                    pass
+        return validated
+    
     def extract_guide_points(self, 
                             start: Tuple[float, float, float],
                             goal: Tuple[float, float, float]) -> List[Tuple[float, float, float]]:
-        """
-        提取引导点序列
-        
-        Args:
-            start: 起始位姿 (x, y, theta)
-            goal: 目标位姿 (x, y, theta)
-        
-        Returns:
-            引导点序列，包含起点和终点，格式 [(x, y, theta), ...]
-        """
-        # 1. 预处理障碍物
+        """提取引导点序列"""
+        # 1. 简化障碍物
         simplified_obstacles = self._simplify_obstacles()
         
-        # 2. 构建可视窗口
+        # 2. 提取节点
         nodes = self._extract_nodes(start, goal, simplified_obstacles)
+        
+        # 如果节点太少，返回直接路径
+        if len(nodes) < 2:
+            print("警告：节点太少，使用直接路径")
+            return [start, goal]
         
         # 3. 构建可视图
         edges = self._build_visibility_graph(nodes, simplified_obstacles)
         
-        # 4. Dijkstra搜索最短路径
+        # 4. Dijkstra搜索
         path_nodes = self._dijkstra_search(nodes, edges, start, goal)
         
-        if not path_nodes:
-            # 如果没有找到路径，返回简单的直线路径
+        if not path_nodes or len(path_nodes) < 2:
             print("警告：未找到引导路径，使用直线路径")
             return [start, goal]
         
@@ -64,11 +86,24 @@ class SVGGuidePointExtractor:
         """简化障碍物多边形"""
         simplified = []
         for poly in self.obstacle_polys:
-            if self.use_convex_hull:
-                poly = poly.convex_hull
-            if self.simplify_tolerance > 0:
-                poly = poly.simplify(self.simplify_tolerance, preserve_topology=True)
-            simplified.append(poly)
+            try:
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                if poly.is_empty:
+                    continue
+                
+                if self.use_convex_hull:
+                    poly = poly.convex_hull
+                
+                if self.simplify_tolerance > 0:
+                    poly = poly.simplify(self.simplify_tolerance, preserve_topology=True)
+                
+                if poly.is_valid and not poly.is_empty:
+                    simplified.append(poly)
+            except Exception as e:
+                print(f"简化障碍物警告: {e}")
+                continue
+        
         return simplified
     
     def _extract_nodes(self, 
@@ -78,9 +113,9 @@ class SVGGuidePointExtractor:
         """提取可视图节点"""
         nodes = []
         
-        # 添加起点和终点（只取x,y坐标）
-        nodes.append((start[0], start[1]))
-        nodes.append((goal[0], goal[1]))
+        # 添加起点和终点
+        nodes.append((float(start[0]), float(start[1])))
+        nodes.append((float(goal[0]), float(goal[1])))
         
         # 计算可视窗口边界
         min_x = min(start[0], goal[0]) - self.view_margin
@@ -90,16 +125,19 @@ class SVGGuidePointExtractor:
         
         # 提取障碍物顶点
         for poly in obstacles:
-            # 检查多边形是否在可视窗口内
-            if not self._is_polygon_in_window(poly, min_x, max_x, min_y, max_y):
+            try:
+                # 检查多边形是否在可视窗口内
+                if not self._is_polygon_in_window(poly, min_x, max_x, min_y, max_y):
+                    continue
+                
+                # 获取顶点
+                coords = list(poly.exterior.coords)[:-1]  # 移除重复的最后一个点
+                for coord in coords:
+                    if min_x <= coord[0] <= max_x and min_y <= coord[1] <= max_y:
+                        nodes.append((float(coord[0]), float(coord[1])))
+            except Exception as e:
+                print(f"提取节点警告: {e}")
                 continue
-            
-            # 获取顶点
-            coords = list(poly.exterior.coords)[:-1]  # 移除重复的最后一个点
-            for coord in coords:
-                # 只添加在可视窗口内的点
-                if min_x <= coord[0] <= max_x and min_y <= coord[1] <= max_y:
-                    nodes.append(coord)
         
         # 移除重复节点
         unique_nodes = self._remove_duplicate_nodes(nodes)
@@ -110,14 +148,20 @@ class SVGGuidePointExtractor:
                               min_x: float, max_x: float,
                               min_y: float, max_y: float) -> bool:
         """检查多边形是否在可视窗口内"""
-        bounds = poly.bounds
-        if bounds[2] < min_x or bounds[0] > max_x or bounds[3] < min_y or bounds[1] > max_y:
+        try:
+            bounds = poly.bounds
+            if bounds[2] < min_x or bounds[0] > max_x or bounds[3] < min_y or bounds[1] > max_y:
+                return False
+            return True
+        except:
             return False
-        return True
     
     def _remove_duplicate_nodes(self, nodes: List[Tuple[float, float]], 
                                tolerance: float = 0.01) -> List[Tuple[float, float]]:
         """移除重复节点"""
+        if not nodes:
+            return []
+        
         unique = []
         for node in nodes:
             is_duplicate = False
@@ -133,6 +177,9 @@ class SVGGuidePointExtractor:
                                nodes: List[Tuple[float, float]],
                                obstacles: List[Polygon]) -> List[Tuple[int, int, float]]:
         """构建可视图边"""
+        if len(nodes) < 2:
+            return []
+        
         edges = []
         n = len(nodes)
         
@@ -158,11 +205,12 @@ class SVGGuidePointExtractor:
                         start: Tuple[float, float, float],
                         goal: Tuple[float, float, float]) -> Optional[List[Tuple[float, float]]]:
         """Dijkstra搜索最短路径"""
-        n = len(nodes)
+        if len(nodes) < 2:
+            return None
         
-        # 找到起点和终点的索引
-        start_idx = 0  # 起点在第一个
-        goal_idx = 1   # 终点在第二个
+        n = len(nodes)
+        start_idx = 0
+        goal_idx = 1
         
         # 构建邻接表
         adj = [[] for _ in range(n)]
@@ -176,15 +224,21 @@ class SVGGuidePointExtractor:
         dist[start_idx] = 0
         pq = [(0, start_idx)]
         
+        visited = set()
+        
         while pq:
             d, u = heapq.heappop(pq)
-            if d > dist[u]:
+            
+            if u in visited:
                 continue
+            visited.add(u)
             
             if u == goal_idx:
                 break
             
             for v, weight in adj[u]:
+                if v in visited:
+                    continue
                 new_dist = d + weight
                 if new_dist < dist[v]:
                     dist[v] = new_dist
@@ -192,7 +246,7 @@ class SVGGuidePointExtractor:
                     heapq.heappush(pq, (new_dist, v))
         
         # 重建路径
-        if dist[goal_idx] == float('inf'):
+        if dist[goal_idx] == float('inf') or prev[goal_idx] == -1:
             return None
         
         path = []
@@ -216,24 +270,16 @@ class SVGGuidePointExtractor:
         
         for i, node in enumerate(path_nodes):
             if i == 0:
-                # 起点使用给定的航向
                 heading = start_heading
             elif i == len(path_nodes) - 1:
-                # 终点使用给定的航向
                 heading = goal_heading
             else:
-                # 计算平滑航向：前后方向的加权平均
                 prev_node = path_nodes[i-1]
                 next_node = path_nodes[i+1]
-                
-                # 前段方向
                 dir1 = compute_heading(prev_node, node)
-                # 后段方向
                 dir2 = compute_heading(node, next_node)
-                
-                # 平滑插值
-                angle_diff = normalize_angle(dir2 - dir1)
-                heading = normalize_angle(dir1 + 0.5 * angle_diff)
+                angle_diff_val = normalize_angle(dir2 - dir1)
+                heading = normalize_angle(dir1 + 0.5 * angle_diff_val)
             
             guide_points.append((node[0], node[1], heading))
         

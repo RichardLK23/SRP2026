@@ -8,10 +8,10 @@ import numpy as np
 from typing import List, Tuple, Optional, Dict, Set
 from shapely.geometry import Polygon
 
-from ..config import Config
-from .vehicle_model import VehicleModel, generate_reeds_shepp_path
-from .collision_checker import CollisionChecker
-from ...utils.geometry import distance, angle_diff, normalize_angle  # 确保这些导入存在
+from config import Config
+from vehicle_model import VehicleModel, generate_reeds_shepp_path
+from collision_checker import CollisionChecker
+from geometry import distance, angle_diff, normalize_angle
 
 
 class Node:
@@ -27,7 +27,7 @@ class Node:
         self.f = g + h
         self.parent = None
         self.steering = 0.0
-        self.direction = 1  # 1前进，-1后退
+        self.direction = 1
         self.step_index = 0
         
     def __lt__(self, other):
@@ -37,7 +37,6 @@ class Node:
         return (self.x, self.y, self.theta)
     
     def get_grid_key(self, xy_res: float, theta_res: float) -> Tuple[int, int, int]:
-        """获取网格键值用于状态去重"""
         x_idx = int(round(self.x / xy_res))
         y_idx = int(round(self.y / xy_res))
         theta_idx = int(round(math.degrees(self.theta) / theta_res))
@@ -53,13 +52,11 @@ class HybridAStarPlanner:
         self.vehicle = VehicleModel(config)
         self.collision_checker = CollisionChecker(obstacle_polys, config)
         
-        # 搜索参数
         self.xy_res = config.hybrid_astar.XY_RESOLUTION
         self.theta_res = config.hybrid_astar.THETA_RESOLUTION
         self.max_iterations = config.hybrid_astar.MAX_ITERATIONS
         self.max_expansion = config.hybrid_astar.MAX_EXPANSION_NODES
         
-        # 代价权重
         self.weight_path = config.cost.WEIGHT_PATH_LENGTH
         self.weight_gear = config.cost.WEIGHT_GEAR_CHANGE
         self.weight_steering = config.cost.WEIGHT_STEERING_CHANGE
@@ -67,10 +64,8 @@ class HybridAStarPlanner:
         self.weight_guide_dist = config.cost.WEIGHT_GUIDE_DIST
         self.weight_heading = config.cost.WEIGHT_HEADING_DIFF
         
-        # 运动基元
         self.motion_primitives = self._generate_primitives()
         
-        # 引导点相关
         self.guide_points = []
         self.guide_point_index = 0
         self.guide_reach_radius = config.hybrid_astar.GUIDE_POINT_REACH_RADIUS
@@ -80,35 +75,20 @@ class HybridAStarPlanner:
              start: Tuple[float, float, float],
              goal: Tuple[float, float, float],
              guide_points: List[Tuple[float, float, float]]) -> Optional[List[Tuple[float, float, float]]]:
-        """
-        执行混合A*搜索
-        
-        Args:
-            start: 起始位姿 (x, y, theta)
-            goal: 目标位姿 (x, y, theta)
-            guide_points: 引导点序列
-        
-        Returns:
-            粗糙路径位姿序列
-        """
+        """执行混合A*搜索"""
         self.guide_points = guide_points
         self.guide_point_index = 0
         
-        # 检查起点和终点是否有效
+        print(f"开始搜索: 起点={start}, 目标={goal}")
+        
         if self.collision_checker.check_vehicle_collision(start[0], start[1], start[2]):
             print("错误：起点发生碰撞")
             return None
         
-        if self.collision_checker.check_vehicle_collision(goal[0], goal[1], goal[2]):
-            print("警告：终点发生碰撞，尝试微调")
-            # 这里可以尝试微调终点位置
-        
-        # 反向搜索：从目标向起点搜索
         start_node = Node(start[0], start[1], start[2], 0.0)
         start_node.h = self._calculate_heuristic(start_node, goal, guide_points[-1] if guide_points else goal)
         start_node.f = start_node.h
         
-        # Open和Closed列表
         open_list = [start_node]
         closed_set: Set[Tuple[int, int, int]] = set()
         node_map: Dict[Tuple[int, int, int], Node] = {}
@@ -120,12 +100,10 @@ class HybridAStarPlanner:
         while open_list and iterations < self.max_iterations:
             iterations += 1
             
-            # 检查时间限制
             if time.time() - start_time > self.config.hybrid_astar.TIME_LIMIT:
                 print(f"搜索超时 ({self.config.hybrid_astar.TIME_LIMIT}秒)")
                 break
             
-            # 弹出最优节点
             current = heapq.heappop(open_list)
             current_key = current.get_grid_key(self.xy_res, self.theta_res)
             
@@ -134,13 +112,17 @@ class HybridAStarPlanner:
             
             closed_set.add(current_key)
             
+            # 每1000次迭代打印进度
+            if iterations % 1000 == 0:
+                print(f"迭代 {iterations}: 当前位置 ({current.x:.2f}, {current.y:.2f})")
+            
             # 检查是否到达目标
             if self._is_goal_reached(current, goal):
                 print(f"找到路径！扩展节点数: {len(closed_set)}")
                 return self._reconstruct_path(current)
             
             # 尝试RS曲线直接连接
-            if self._try_rs_connection(current, start_node, goal):
+            if self._try_rs_connection(current, goal):
                 print(f"RS曲线连接成功！扩展节点数: {len(closed_set)}")
                 return self._reconstruct_path(current)
             
@@ -153,19 +135,15 @@ class HybridAStarPlanner:
             for child in children:
                 child_key = child.get_grid_key(self.xy_res, self.theta_res)
                 
-                # 跳过已在closed set中的节点
                 if child_key in closed_set:
                     continue
                 
-                # 检查碰撞
                 if self.collision_checker.check_vehicle_collision(child.x, child.y, child.theta):
                     continue
                 
-                # 计算启发值
                 child.h = self._calculate_heuristic(child, goal, self._get_current_guide_point())
                 child.f = child.g + child.h
                 
-                # 更新open list
                 if child_key not in node_map or child.g < node_map[child_key].g:
                     node_map[child_key] = child
                     heapq.heappush(open_list, child)
@@ -179,15 +157,15 @@ class HybridAStarPlanner:
         max_steering = self.config.vehicle.max_steering_rad
         step_size = self.config.vehicle.STEP_SIZE
         
-        # 前进基元
-        steering_angles = [0, 0.3*max_steering, 0.6*max_steering, max_steering]
+        # 前进基元 - 使用更明显的转向角度
+        steering_angles = [0, 0.5*max_steering, max_steering]
         for steering in steering_angles:
             primitives.append((steering, 1, step_size))
             if steering != 0:
                 primitives.append((-steering, 1, step_size))
         
-        # 后退基元（默认启用，但在某些情况下会被过滤）
-        reverse_steering = [0, 0.2*max_steering, 0.4*max_steering]
+        # 后退基元
+        reverse_steering = [0, 0.3*max_steering, 0.6*max_steering]
         for steering in reverse_steering:
             primitives.append((steering, -1, step_size * 0.8))
             if steering != 0:
@@ -198,12 +176,9 @@ class HybridAStarPlanner:
     def _expand_node(self, node: Node, goal: Tuple[float, float, float]) -> List[Node]:
         """扩展节点"""
         children = []
-        
-        # 确定是否使用后退基元
         use_reverse = self._should_use_reverse(node)
         
         for steering, direction, step_size in self.motion_primitives:
-            # 如果不需要后退，过滤掉后退基元
             if not use_reverse and direction < 0:
                 continue
             
@@ -244,7 +219,6 @@ class HybridAStarPlanner:
         if current_guide is None:
             return True
         
-        # 计算当前航向与引导点方向的夹角
         dx = current_guide[0] - node.x
         dy = current_guide[1] - node.y
         if dx == 0 and dy == 0:
@@ -253,7 +227,6 @@ class HybridAStarPlanner:
         target_heading = math.atan2(dy, dx)
         heading_diff = abs(angle_diff(node.theta, target_heading))
         
-        # 如果航向偏差小于阈值，不需要倒车
         return heading_diff > self.angle_threshold
     
     def _calculate_heuristic(self, node: Node, goal: Tuple[float, float, float],
@@ -262,16 +235,14 @@ class HybridAStarPlanner:
         h = 0.0
         
         if guide_point:
-            # 到引导点的距离和航向偏差
             dist_to_guide = distance((node.x, node.y), (guide_point[0], guide_point[1]))
             heading_diff = abs(angle_diff(node.theta, guide_point[2]))
             
             h += self.weight_guide_dist * dist_to_guide
             h += self.weight_heading * heading_diff
         
-        # 到目标的距离
         dist_to_goal = distance((node.x, node.y), (goal[0], goal[1]))
-        h += dist_to_goal  # 基础距离启发
+        h += dist_to_goal
         
         # 障碍物距离惩罚
         clearance = self.collision_checker.get_clearance_to_obstacles(
@@ -306,21 +277,23 @@ class HybridAStarPlanner:
         return (dist < self.config.cost.GOAL_REACHED_THRESHOLD and 
                 heading_diff < math.radians(self.config.cost.GOAL_HEADING_THRESHOLD))
     
-    def _try_rs_connection(self, node: Node, start_node: Node,
-                          goal: Tuple[float, float, float]) -> bool:
-        """尝试用RS曲线连接"""
-        # 尝试连接到起点（反向搜索）
-        start_pose = (start_node.x, start_node.y, start_node.theta)
+    def _try_rs_connection(self, node: Node, goal: Tuple[float, float, float]) -> bool:
+        """尝试用RS曲线连接到目标"""
         node_pose = (node.x, node.y, node.theta)
+        goal_pose = (goal[0], goal[1], goal[2])
         
-        rs_path = generate_reeds_shepp_path(node_pose, start_pose,
+        # 检查是否离目标足够近
+        dist = distance((node.x, node.y), (goal[0], goal[1]))
+        if dist > 20.0:  # 如果太远，不尝试RS曲线
+            return False
+        
+        rs_path = generate_reeds_shepp_path(node_pose, goal_pose,
                                            self.vehicle.turning_radius,
                                            self.config.vehicle.STEP_SIZE)
         
-        if rs_path:
+        if rs_path and len(rs_path) > 2:
             # 检查路径是否碰撞
             if not self.collision_checker.check_path_collision(rs_path):
-                # 路径有效，将其连接到当前节点
                 node.rs_path = rs_path
                 return True
         
@@ -343,4 +316,79 @@ class HybridAStarPlanner:
         path.append(current.get_pose())
         path.reverse()
         
+        # 如果路径点太少，进行插值
+        if len(path) < 5:
+            print(f"路径点太少 ({len(path)}个)，进行插值")
+            path = self._interpolate_path(path, 50)
+        
+        # 计算路径总长度
+        total_len = 0
+        for i in range(len(path) - 1):
+            total_len += distance((path[i][0], path[i][1]), (path[i+1][0], path[i+1][1]))
+        print(f"路径总长度: {total_len:.2f}m, 路径点数: {len(path)}")
+        
         return path
+    
+    def _interpolate_path(self, path: List[Tuple[float, float, float]], 
+                          num_points: int) -> List[Tuple[float, float, float]]:
+        """插值路径点"""
+        if len(path) < 2:
+            return path
+        
+        # 计算总长度
+        segments = []
+        total_length = 0
+        for i in range(len(path) - 1):
+            dist = distance((path[i][0], path[i][1]), (path[i+1][0], path[i+1][1]))
+            segments.append(dist)
+            total_length += dist
+        
+        if total_length < 0.001:
+            # 如果总长度为0，生成从起点到终点的直线
+            print("路径长度为0，生成直线路径")
+            return self._generate_straight_path(path, num_points)
+        
+        interpolated = []
+        for i in range(num_points):
+            t = i / (num_points - 1)
+            target_dist = t * total_length
+            
+            cum_dist = 0
+            for j, seg_len in enumerate(segments):
+                if cum_dist + seg_len >= target_dist or j == len(segments) - 1:
+                    local_t = (target_dist - cum_dist) / seg_len if seg_len > 0.001 else 0
+                    local_t = max(0, min(1, local_t))
+                    
+                    x = path[j][0] + local_t * (path[j+1][0] - path[j][0])
+                    y = path[j][1] + local_t * (path[j+1][1] - path[j][1])
+                    theta = normalize_angle(path[j][2] + local_t * angle_diff(path[j][2], path[j+1][2]))
+                    
+                    interpolated.append((x, y, theta))
+                    break
+                
+                cum_dist += seg_len
+        
+        # 确保包含最后一个点
+        if len(interpolated) > 0:
+            interpolated[-1] = (path[-1][0], path[-1][1], path[-1][2])
+        
+        return interpolated
+    
+    def _generate_straight_path(self, path: List[Tuple[float, float, float]], 
+                                num_points: int) -> List[Tuple[float, float, float]]:
+        """生成直线路径"""
+        if len(path) < 2:
+            return [(path[0][0], path[0][1], path[0][2]) for _ in range(num_points)]
+        
+        start = path[0]
+        end = path[-1]
+        
+        straight_path = []
+        for i in range(num_points):
+            t = i / (num_points - 1)
+            x = start[0] + t * (end[0] - start[0])
+            y = start[1] + t * (end[1] - start[1])
+            theta = normalize_angle(start[2] + t * angle_diff(start[2], end[2]))
+            straight_path.append((x, y, theta))
+        
+        return straight_path
