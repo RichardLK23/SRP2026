@@ -18,7 +18,7 @@ class VehicleConfig:
     
     # 运动学限制
     MAX_STEERING_ANGLE = 35.0
-    MIN_TURNING_RADIUS = 5.0
+    MIN_TURNING_RADIUS = 8.0
     
     # 速度/步长参数
     STEP_SIZE = 0.3       # 搜索步长（从0.2改为0.3，加快搜索）
