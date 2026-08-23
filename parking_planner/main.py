@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Polygon, box
 from typing import List, Tuple
 
-from config import get_default_config, validate_config
-from core.svg_builder import SVGGuidePointExtractor
-from core.hybrid_astar import HybridAStarPlanner
-from core.bspline_smoother import BSplineSmoother
-from utils.visualization import Visualizer
-from utils.geometry import distance  # 添加缺失的导入
+from parking_planner.config import get_default_config, validate_config
+from parking_planner.core.svg_builder import SVGGuidePointExtractor
+from parking_planner.core.hybrid_astar import HybridAStarPlanner
+from parking_planner.core.bspline_smoother import BSplineSmoother
+from parking_planner.utils.visualization import Visualizer
+from parking_planner.utils.geometry import distance  # 添加缺失的导入
 
 
 def create_test_scenario(scenario_id: int = 1):

@@ -9,9 +9,9 @@ from typing import List, Tuple, Optional, Dict, Set
 from shapely.geometry import Polygon
 
 from ..config import Config
-from ..core.vehicle_model import VehicleModel, generate_reeds_shepp_path
-from ..core.collision_checker import CollisionChecker
-from ..utils.geometry import distance, angle_diff, normalize_angle  # 确保这些导入存在
+from .vehicle_model import VehicleModel, generate_reeds_shepp_path
+from .collision_checker import CollisionChecker
+from ...utils.geometry import distance, angle_diff, normalize_angle  # 确保这些导入存在
 
 
 class Node:

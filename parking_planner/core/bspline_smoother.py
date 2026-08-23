@@ -8,8 +8,8 @@ from scipy.interpolate import splprep, splev
 from shapely.geometry import Polygon
 
 from ..config import Config
-from ..core.collision_checker import CollisionChecker
-from ..utils.geometry import distance, normalize_angle  # 添加distance导入
+from .collision_checker import CollisionChecker
+from ...utils.geometry import distance, normalize_angle  # 添加distance导入
 
 
 class BSplineSmoother:

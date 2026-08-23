@@ -8,7 +8,7 @@ from shapely.geometry import Polygon, LineString
 from shapely.affinity import translate, rotate
 
 from ..config import Config
-from ..utils.geometry import create_vehicle_rect, normalize_angle, angle_diff  # 添加angle_diff
+from ...utils.geometry import create_vehicle_rect, normalize_angle, angle_diff  # 添加angle_diff
 
 
 class VehicleModel:

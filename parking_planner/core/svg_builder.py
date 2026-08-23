@@ -7,8 +7,8 @@ from typing import List, Tuple, Optional, Set
 from shapely.geometry import Polygon, Point, LineString
 
 from ..config import Config
-from ..core.collision_checker import CollisionChecker
-from ..utils.geometry import distance, compute_heading, normalize_angle
+from .collision_checker import CollisionChecker
+from ...utils.geometry import distance, compute_heading, normalize_angle
 
 
 class SVGGuidePointExtractor:

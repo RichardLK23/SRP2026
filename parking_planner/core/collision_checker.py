@@ -5,7 +5,7 @@ from typing import List, Tuple
 from shapely.geometry import Polygon, LineString
 from shapely.strtree import STRtree
 
-from ..utils.geometry import create_vehicle_rect
+from ...utils.geometry import create_vehicle_rect
 
 
 class CollisionChecker:

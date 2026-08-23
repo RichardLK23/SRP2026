@@ -9,7 +9,7 @@ from typing import List, Tuple
 from shapely.geometry import Polygon
 
 from ..config import Config
-from ..utils.geometry import create_vehicle_rect
+from .geometry import create_vehicle_rect
 
 
 class Visualizer:
