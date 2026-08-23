@@ -89,13 +89,18 @@ def generate_reeds_shepp_path(start: Tuple[float, float, float],
                               goal: Tuple[float, float, float],
                               turning_radius: float,
                               step_size: float) -> Optional[List[Tuple[float, float, float]]]:
-    """生成Reeds-Shepp曲线路径（简化版本）"""
+    """
+    生成Reeds-Shepp曲线路径（简化版本）
+    """
     x1, y1, theta1 = start
     x2, y2, theta2 = goal
     
     dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
     if dist < 50.0:
-        num_points = max(2, int(dist / step_size))
+        # 使用更小的步长，生成更多点以便碰撞检测
+        small_step = min(step_size, 0.1)  # 使用0.1m步长
+        num_points = max(10, int(dist / small_step))
+        
         path = []
         for i in range(num_points + 1):
             t = i / num_points
@@ -103,6 +108,9 @@ def generate_reeds_shepp_path(start: Tuple[float, float, float],
             y = y1 + t * (y2 - y1)
             theta = normalize_angle(theta1 + t * angle_diff(theta1, theta2))
             path.append((x, y, theta))
+        
+        # 打印路径信息用于调试
+        print(f"生成RS路径: 起点({x1:.2f},{y1:.2f}) -> 终点({x2:.2f},{y2:.2f}), 共{len(path)}个点")
         return path
     
     return None

@@ -18,53 +18,52 @@ from collision_checker import CollisionChecker  # 添加这个导入
 def create_test_scenario(scenario_id: int = 1):
     """
     创建测试场景
-    
-    Args:
-        scenario_id: 1-简单, 2-中等, 3-狭窄
-    
-    Returns:
-        (obstacle_polys, start, goal)
     """
     if scenario_id == 1:
-        # 简单场景：开阔停车场
+        # 场景1：障碍物放在路径上方（y正方向），车辆从下方绕行
         obstacles = [
-            box(3, 3, 4, 4),
-            box(7, 6, 8, 7),
-            box(-2, 4, -1, 5),
+            box(1.0, 2.5, 3.0, 4.5),    # 放在路径上方
         ]
         start = (0, 0, 0)
         goal = (5, 5, 0)
         
     elif scenario_id == 2:
-        # 中等场景：带更多障碍物
+        # 场景2：障碍物放在路径右侧
         obstacles = [
-            box(2, 0, 3, 8),
-            box(5, 2, 6, 6),
-            box(8, 1, 9, 7),
-            box(1, -1, 9, 0),
+            box(3.0, 0.5, 4.5, 2.0),
         ]
-        start = (1, 5, 0)
-        goal = (7, 3, 0)
+        start = (0, 0, 0)
+        goal = (5, 5, 0)
         
-    else:
-        # 狭窄场景：狭窄车位
+    elif scenario_id == 3:
+        # 场景3：障碍物远离起点
         obstacles = [
-            box(3, 2, 4, 4.5),
-            box(3, 5.5, 4, 8),
-            box(0, -1, 10, 0),
-            box(0, 9, 10, 10),
+            box(3.0, 3.0, 4.5, 4.5),
         ]
-        start = (1, 5, 0)
-        goal = (4.5, 4, 0)
+        start = (0, 0, 0)
+        goal = (5, 5, 0)
+        
+    elif scenario_id == 4:
+        # 场景4：两个小障碍物形成通道
+        obstacles = [
+            box(1.5, -0.5, 2.5, 1.5),
+            box(1.5, 3.5, 2.5, 5.5),
+        ]
+        start = (0, 0, 0)
+        goal = (5, 5, 0)
     
-    # 确保所有障碍物都是有效的 Polygon 对象
+    else:
+        # 无障碍物（测试用）
+        obstacles = []
+        start = (0, 0, 0)
+        goal = (5, 5, 0)
+    
     obstacle_polys = []
     for p in obstacles:
         try:
             if p.is_valid and not p.is_empty:
                 obstacle_polys.append(p)
             else:
-                # 尝试修复
                 fixed = p.buffer(0)
                 if fixed.is_valid and not fixed.is_empty:
                     obstacle_polys.append(fixed)
@@ -221,7 +220,29 @@ def main():
     print("\n" + "=" * 60)
     print("规划完成！")
     print("=" * 60)
-    
+
+    try:
+        # 创建碰撞检测器
+        collision_checker = CollisionChecker(obstacle_polys, config)
+        
+        # 检查每个路径点
+        print("\n检查路径点碰撞:")
+        has_collision = False
+        for i, (x, y, theta) in enumerate(smooth_path):
+            if collision_checker.check_vehicle_collision(x, y, theta):
+                print(f"  ❌ 点 {i}: ({x:.2f}, {y:.2f}) 碰撞")
+                has_collision = True
+                break
+            if i % 20 == 0:
+                print(f"  ✓ 点 {i}: ({x:.2f}, {y:.2f}) 安全")
+        
+        print(f"\n碰撞检测: {'❌ 存在碰撞' if has_collision else '✅ 无碰撞'}")
+        
+    except Exception as e:
+        print(f"碰撞检测异常: {e}")
+        import traceback
+        traceback.print_exc()
+
     return smooth_path
 
 

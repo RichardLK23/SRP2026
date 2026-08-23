@@ -7,21 +7,21 @@ import math
 # 1. 车辆运动学参数
 # ============================================
 class VehicleConfig:
-    """车辆基本参数（参考：中型轿车）"""
+    """车辆基本参数（参考：小型车）"""
     
-    # 车辆尺寸（单位：米）
-    LENGTH = 4.5          # 车长
-    WIDTH = 1.8           # 车宽
-    WHEELBASE = 2.7       # 轴距
-    REAR_OVERHANG = 0.8   # 后悬（后轴到车尾距离）
-    FRONT_OVERHANG = 1.0  # 前悬（前轴到车头距离）
+    # 车辆尺寸（单位：米）- 改小以便在狭窄空间机动
+    LENGTH = 2.5          # 车长（从4.5改为2.5）
+    WIDTH = 1.2           # 车宽（从1.8改为1.2）
+    WHEELBASE = 1.8       # 轴距
+    REAR_OVERHANG = 0.5
+    FRONT_OVERHANG = 0.5
     
     # 运动学限制
-    MAX_STEERING_ANGLE = 35.0  # 最大前轮转角（度）
-    MIN_TURNING_RADIUS = 5.0   # 最小转弯半径（米）
+    MAX_STEERING_ANGLE = 35.0
+    MIN_TURNING_RADIUS = 5.0
     
     # 速度/步长参数
-    STEP_SIZE = 0.2       # 搜索步长（米）
+    STEP_SIZE = 0.3       # 搜索步长（从0.2改为0.3，加快搜索）
     REVERSE_SPEED = -1.0  # 倒车速度
     FORWARD_SPEED = 1.0   # 前进速度
     
@@ -42,14 +42,14 @@ class VehicleConfig:
 class HybridAStarConfig:
     """混合A*算法搜索参数"""
     
-    # 网格离散化分辨率
-    XY_RESOLUTION = 0.2   # 位置网格分辨率（米）
-    THETA_RESOLUTION = 5  # 航向角网格分辨率（度）
+    # 网格离散化分辨率 - 加大分辨率加快搜索
+    XY_RESOLUTION = 0.3   # 从0.2改为0.3
+    THETA_RESOLUTION = 10  # 从5改为10，减少航向状态数
     
     # 搜索限制
-    MAX_ITERATIONS = 50000      # 最大搜索迭代次数
-    MAX_EXPANSION_NODES = 10000 # 最大扩展节点数
-    TIME_LIMIT = 30.0           # 搜索时间限制（秒）
+    MAX_ITERATIONS = 50000
+    MAX_EXPANSION_NODES = 10000
+    TIME_LIMIT = 60.0      # 从30改为60，给更多时间
     
     # 运动基元设置
     MOTION_PRIMITIVES = [

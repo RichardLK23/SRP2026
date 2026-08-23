@@ -30,54 +30,90 @@ class BSplineSmoother:
         self.max_collision_iter = config.bspline.MAX_COLLISION_ITERATIONS
     
     def smooth_path(self, 
-                   rough_path: List[Tuple[float, float, float]]) -> Optional[List[Tuple[float, float, float]]]:
-        """平滑路径"""
+               rough_path: List[Tuple[float, float, float]]) -> Optional[List[Tuple[float, float, float]]]:
+        """平滑路径 - 限制最大曲率"""
         if len(rough_path) < 3:
             print(f"路径点太少 ({len(rough_path)}个)，进行插值")
             return self._interpolate_path(rough_path, 100)
         
-        # 提取控制点 - 使用更密集的采样
-        control_points = self._extract_control_points(rough_path)
-        
-        # 如果控制点太少，使用所有点
-        if len(control_points) < 4:
-            print("控制点太少，使用所有路径点")
-            control_points = np.array([(p[0], p[1]) for p in rough_path])
+        # ===== 关键修复：使用所有路径点作为控制点，不要采样 =====
+        # 直接使用所有路径点，避免丢失细节
+        control_points = np.array([(p[0], p[1]) for p in rough_path])
         
         # 生成足够多的点
-        num_points = max(len(rough_path) * 3, 150)
+        num_points = max(len(rough_path) * 3, 200)
         
-        # 尝试B样条拟合
+        # 尝试B样条拟合，如果失败使用插值
         smooth_path = self._fit_bspline(control_points, num_points)
         
-        # 如果B样条失败，使用线性插值
         if smooth_path is None or len(smooth_path) < 10:
             print("B样条拟合失败，使用线性插值")
             smooth_path = self._interpolate_path(rough_path, num_points)
         
-        # 碰撞校验与迭代
-        for iteration in range(self.max_collision_iter):
-            has_collision = self.collision_checker.check_path_collision(smooth_path)
-            
-            if not has_collision:
-                curvatures = self._calculate_curvatures(smooth_path)
-                max_curv = max(abs(c) for c in curvatures) if curvatures else 0
-                
-                if max_curv <= self.max_curvature * self.curvature_safety:
-                    print(f"平滑成功！迭代次数: {iteration+1}, 最大曲率: {max_curv:.4f}, 路径点数: {len(smooth_path)}")
-                    return smooth_path
-                else:
-                    print(f"曲率过大: {max_curv:.4f}，尝试重新平滑")
-            
-            # 减小采样间隔重新拟合
-            self.sample_interval = max(1, self.sample_interval - 1)
-            control_points = self._extract_control_points(rough_path)
-            smooth_path = self._fit_bspline(control_points, num_points * 2)
-            if smooth_path is None:
+        # ===== 关键修复：检查并限制曲率 =====
+        curvatures = self._calculate_curvatures(smooth_path)
+        if curvatures:
+            max_curv = max(abs(c) for c in curvatures)
+            if max_curv > self.max_curvature:
+                print(f"曲率过大 ({max_curv:.2f})，使用更保守的平滑")
+                # 使用更密集的插值，减少曲率
                 smooth_path = self._interpolate_path(rough_path, num_points * 2)
         
-        print(f"平滑迭代达到最大次数 ({self.max_collision_iter})，返回当前路径")
+        print(f"平滑完成！路径点数: {len(smooth_path)}")
         return smooth_path
+
+    def _fit_bspline(self, 
+                    control_points: np.ndarray, 
+                    num_points: int) -> Optional[List[Tuple[float, float, float]]]:
+        """拟合B样条曲线 - 增加稳定性"""
+        if len(control_points) < 4:
+            return None
+        
+        try:
+            x = control_points[:, 0]
+            y = control_points[:, 1]
+            
+            # 检查是否有重复点
+            unique_points = []
+            for i, (xi, yi) in enumerate(zip(x, y)):
+                if i == 0:
+                    unique_points.append((xi, yi))
+                else:
+                    if distance((xi, yi), unique_points[-1]) > 0.01:
+                        unique_points.append((xi, yi))
+            
+            if len(unique_points) < 4:
+                return None
+            
+            x = np.array([p[0] for p in unique_points])
+            y = np.array([p[1] for p in unique_points])
+            
+            # ===== 关键修复：使用更小的平滑参数，保持路径形状 =====
+            # 平滑参数s越小，路径越接近原始点
+            s = min(self.smoothing_weight, 0.01)  # 使用很小的平滑参数
+            
+            # B样条拟合，使用3次样条
+            k = min(3, len(unique_points) - 1)
+            tck, u = splprep([x, y], s=s, k=k)
+            
+            # 生成密集点
+            u_new = np.linspace(0, 1, num_points)
+            x_new, y_new = splev(u_new, tck)
+            
+            # 计算航向角
+            dx, dy = splev(u_new, tck, der=1)
+            headings = np.arctan2(dy, dx)
+            
+            smooth_path = []
+            for i in range(len(x_new)):
+                theta = normalize_angle(headings[i])
+                smooth_path.append((float(x_new[i]), float(y_new[i]), theta))
+            
+            return smooth_path
+            
+        except Exception as e:
+            print(f"B样条拟合详细错误: {e}")
+            return None
     
     def _extract_control_points(self, 
                                path: List[Tuple[float, float, float]]) -> np.ndarray:

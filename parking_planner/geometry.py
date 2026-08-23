@@ -3,7 +3,7 @@
 """
 import math
 import numpy as np
-from shapely.geometry import Point, LineString, Polygon, box
+from shapely.geometry import Point, LineString, Polygon, box, GeometryCollection
 from shapely.affinity import rotate, translate
 from shapely.strtree import STRtree
 from typing import List, Tuple, Optional
@@ -65,11 +65,70 @@ def line_intersects_polygon(p1: Tuple[float, float],
 
 def create_vehicle_rect(x: float, y: float, heading: float, 
                         length: float, width: float) -> Polygon:
-    """创建车辆矩形"""
-    rect = box(-length/2, -width/2, length/2, width/2)
-    rect = rotate(rect, math.degrees(heading), origin=(0, 0), use_radians=False)
-    rect = translate(rect, x, y)
-    return rect
+    """
+    创建车辆矩形 - 强制返回有效的 Polygon
+    """
+    try:
+        # 确保所有参数都是float
+        x = float(x)
+        y = float(y)
+        heading = float(heading)
+        length = float(length)
+        width = float(width)
+        
+        # 创建矩形（中心在原点）
+        half_l = length / 2.0
+        half_w = width / 2.0
+        
+        # 直接构造矩形顶点，避免使用 box + rotate 可能产生的问题
+        # 矩形的四个角（未旋转）
+        corners = [
+            (-half_l, -half_w),
+            (half_l, -half_w),
+            (half_l, half_w),
+            (-half_l, half_w)
+        ]
+        
+        # 旋转和平移
+        cos_theta = math.cos(heading)
+        sin_theta = math.sin(heading)
+        
+        transformed_corners = []
+        for cx, cy in corners:
+            # 旋转
+            rx = cx * cos_theta - cy * sin_theta
+            ry = cx * sin_theta + cy * cos_theta
+            # 平移
+            tx = rx + x
+            ty = ry + y
+            transformed_corners.append((tx, ty))
+        
+        # 创建多边形
+        vehicle_poly = Polygon(transformed_corners)
+        
+        # 确保有效
+        if vehicle_poly.is_valid and not vehicle_poly.is_empty:
+            return vehicle_poly
+        
+        # 如果无效，尝试修复
+        vehicle_poly = vehicle_poly.buffer(0)
+        if vehicle_poly.is_valid and not vehicle_poly.is_empty:
+            # 如果 buffer 返回的是 Polygon，直接返回
+            if isinstance(vehicle_poly, Polygon):
+                return vehicle_poly
+            # 如果是 GeometryCollection，取第一个 Polygon
+            elif isinstance(vehicle_poly, GeometryCollection):
+                for geom in vehicle_poly.geoms:
+                    if isinstance(geom, Polygon) and geom.is_valid and not geom.is_empty:
+                        return geom
+        
+        # 最后的后备：返回一个小圆形
+        print(f"警告: 创建车辆矩形失败，使用后备圆形，位置 ({x:.2f}, {y:.2f})")
+        return Point(x, y).buffer(0.5)
+                
+    except Exception as e:
+        print(f"创建车辆矩形错误: {e}")
+        return Point(x, y).buffer(0.5)
 
 
 def compute_heading(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
@@ -86,7 +145,8 @@ def is_point_in_polygon(point: Tuple[float, float], polygon: Polygon) -> bool:
 
 def build_spatial_index(polygons: List[Polygon]) -> STRtree:
     """构建空间索引加速碰撞检测"""
-    return STRtree(polygons)
+    valid_polygons = [p for p in polygons if p is not None and isinstance(p, Polygon) and p.is_valid and not p.is_empty]
+    return STRtree(valid_polygons) if valid_polygons else None
 
 
 def polygon_from_points(points: List[Tuple[float, float]]) -> Polygon:

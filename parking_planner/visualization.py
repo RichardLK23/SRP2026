@@ -50,7 +50,8 @@ class Visualizer:
                    goal: Tuple[float, float, float],
                    guide_points: List[Tuple[float, float, float]],
                    rough_path: List[Tuple[float, float, float]],
-                   smooth_path: List[Tuple[float, float, float]]):
+                   smooth_path: List[Tuple[float, float, float]],
+                   collision_points=None):
         """绘制完整场景"""
         fig, ax = plt.subplots(figsize=self.fig_size)
         ax.set_aspect('equal')
@@ -66,6 +67,12 @@ class Visualizer:
             except Exception as e:
                 print(f"绘制障碍物警告: {e}")
                 continue
+
+        # 绘制碰撞点（如果有）
+        if collision_points:
+            cx = [p[0] for p in collision_points]
+            cy = [p[1] for p in collision_points]
+            ax.scatter(cx, cy, color='red', s=100, marker='x', label='Collision Points')
         
         # 绘制起点和终点
         ax.plot(start[0], start[1], 'go', markersize=12, label='起点')

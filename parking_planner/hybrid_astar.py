@@ -80,6 +80,7 @@ class HybridAStarPlanner:
         self.guide_point_index = 0
         
         print(f"开始搜索: 起点={start}, 目标={goal}")
+        print(f"引导点: {guide_points}")
         
         if self.collision_checker.check_vehicle_collision(start[0], start[1], start[2]):
             print("错误：起点发生碰撞")
@@ -122,9 +123,11 @@ class HybridAStarPlanner:
                 return self._reconstruct_path(current)
             
             # 尝试RS曲线直接连接
-            if self._try_rs_connection(current, goal):
-                print(f"RS曲线连接成功！扩展节点数: {len(closed_set)}")
-                return self._reconstruct_path(current)
+            # 至少扩展100个节点后再尝试RS曲线，确保搜索充分
+            if len(closed_set) > 100:
+                if self._try_rs_connection(current, goal):
+                    print(f"RS曲线连接成功！扩展节点数: {len(closed_set)}")
+                    return self._reconstruct_path(current)
             
             # 更新引导点索引
             self._update_guide_point_index(current)
@@ -187,22 +190,28 @@ class HybridAStarPlanner:
                 node.x, node.y, node.theta, steering, direction, step_size
             )
             
+            # 碰撞检测 - 提前过滤
+            if self.collision_checker.check_vehicle_collision(x_new, y_new, theta_new):
+                continue
+            
+            # 检查线段碰撞
+            if self.collision_checker.check_line_collision(
+                (node.x, node.y), (x_new, y_new)
+            ):
+                continue
+            
             # 计算代价值
             g_new = node.g + step_size
             
-            # 换挡惩罚
             if direction != node.direction:
                 g_new += self.weight_gear * 0.5
             
-            # 转向变化惩罚
             steering_change = abs(steering - node.steering)
             g_new += self.weight_steering * steering_change
             
-            # 倒车惩罚
             if direction < 0:
                 g_new += self.weight_reverse * step_size
             
-            # 创建子节点
             child = Node(x_new, y_new, theta_new, g_new)
             child.parent = node
             child.steering = steering
@@ -238,8 +247,9 @@ class HybridAStarPlanner:
             dist_to_guide = distance((node.x, node.y), (guide_point[0], guide_point[1]))
             heading_diff = abs(angle_diff(node.theta, guide_point[2]))
             
-            h += self.weight_guide_dist * dist_to_guide
-            h += self.weight_heading * heading_diff
+            # ===== 增加引导点权重，让搜索更倾向于跟随引导点 =====
+            h += self.weight_guide_dist * dist_to_guide * 2.0  # 增加权重
+            h += self.weight_heading * heading_diff * 1.5
         
         dist_to_goal = distance((node.x, node.y), (goal[0], goal[1]))
         h += dist_to_goal
@@ -278,24 +288,44 @@ class HybridAStarPlanner:
                 heading_diff < math.radians(self.config.cost.GOAL_HEADING_THRESHOLD))
     
     def _try_rs_connection(self, node: Node, goal: Tuple[float, float, float]) -> bool:
-        """尝试用RS曲线连接到目标"""
+        """尝试用RS曲线连接到目标 - 只在距离足够近且无碰撞时使用"""
         node_pose = (node.x, node.y, node.theta)
         goal_pose = (goal[0], goal[1], goal[2])
         
-        # 检查是否离目标足够近
+        # 检查距离 - 只有5米内才使用RS曲线
         dist = distance((node.x, node.y), (goal[0], goal[1]))
-        if dist > 20.0:  # 如果太远，不尝试RS曲线
+        if dist > 5.0:
             return False
         
+        # 检查航向是否大致朝向目标 - 航向差超过30度不使用RS曲线
+        angle_to_goal = math.atan2(goal[1] - node.y, goal[0] - node.x)
+        heading_diff = abs(angle_diff(node.theta, angle_to_goal))
+        if heading_diff > math.radians(30):
+            return False
+        
+        # 生成RS路径 (实际上是直线)
         rs_path = generate_reeds_shepp_path(node_pose, goal_pose,
-                                           self.vehicle.turning_radius,
-                                           self.config.vehicle.STEP_SIZE)
+                                            self.vehicle.turning_radius,
+                                            self.config.vehicle.STEP_SIZE)
         
         if rs_path and len(rs_path) > 2:
-            # 检查路径是否碰撞
-            if not self.collision_checker.check_path_collision(rs_path):
-                node.rs_path = rs_path
-                return True
+            # ===== 关键修复：检查RS路径上的所有点是否碰撞 =====
+            for i, (x, y, theta) in enumerate(rs_path):
+                if self.collision_checker.check_vehicle_collision(x, y, theta):
+                    print(f"  RS路径点 {i} 碰撞: ({x:.2f}, {y:.2f})，放弃RS连接")
+                    return False
+            
+            # 检查路径线段
+            for i in range(len(rs_path) - 1):
+                p1 = (rs_path[i][0], rs_path[i][1])
+                p2 = (rs_path[i+1][0], rs_path[i+1][1])
+                if self.collision_checker.check_line_collision(p1, p2):
+                    print(f"  RS线段 {i}-{i+1} 碰撞，放弃RS连接")
+                    return False
+            
+            print(f"  RS曲线安全！距离目标 {dist:.2f}m")
+            node.rs_path = rs_path
+            return True
         
         return False
     
