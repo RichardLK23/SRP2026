@@ -25,7 +25,7 @@ def create_test_scenario(scenario_id: int = 1):
             box(2.5, 2.0, 4.0, 3.5),    # 障碍物在路径中间偏下
         ]
         start = (0, 0, 0)
-        goal = (5, 5, 0)
+        goal = (5, 5, 1.57)
         
     elif scenario_id == 2:
         # 场景2：两个障碍物形成通道，但离起点远一些
@@ -34,7 +34,7 @@ def create_test_scenario(scenario_id: int = 1):
             box(2.0, 3.5, 3.5, 5.0),     # 障碍物在路径右侧上方
         ]
         start = (0, 0, 0)
-        goal = (5, 5, 0)
+        goal = (5, 5, 1.57)
         
     elif scenario_id == 3:
         # 场景3：障碍物在路径右侧，留出左侧通道
@@ -42,7 +42,7 @@ def create_test_scenario(scenario_id: int = 1):
             box(2.0, 0.5, 3.5, 4.5),     # 障碍物在路径右侧
         ]
         start = (0, 0, 0)
-        goal = (5, 5, 0)
+        goal = (5, 5, 1.57)
         
     elif scenario_id == 4:
         # 场景4：障碍物在路径下方，留出上方通道
@@ -90,7 +90,7 @@ def main():
     
     # 2. 创建测试场景
     print("\n创建测试场景...")
-    obstacle_polys, start, goal = create_test_scenario(4)
+    obstacle_polys, start, goal = create_test_scenario(1)
     print(f"有效障碍物数量: {len(obstacle_polys)}")
     print(f"起点: {start}")
     print(f"目标: {goal}")

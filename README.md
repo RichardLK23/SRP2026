@@ -41,16 +41,14 @@
 
 #### 五、调用方式
 
-```python
-polygons = detect_polygons('image.png')
-```
+    polygons = detect_polygons('image.png')
 
 返回: [[(x1,y1), (x2,y2), ...], ...]  # 每个多边形顺时针排序
 
 #### 六、关键参数
 
 参数 | 默认值 | 作用
-|--|--|--|
+-- | -- | --
 epsilon_factor | 0.003 | 精度控制（越小点越多）
 collinear_threshold | 5.0 | 共线合并灵敏度（像素）
 visualize | True | 是否显示图表
